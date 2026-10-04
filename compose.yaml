@@ -1,0 +1,33 @@
+services:
+  nats:
+    image: nats:2.11.9-alpine
+    command: ["-c", "/etc/nats/nats.conf"]
+    ports:
+      - "127.0.0.1:4222:4222"
+    volumes:
+      - ./nats.conf:/etc/nats/nats.conf:ro
+      - nats-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8222/healthz?js-enabled-only=true"]
+      interval: 1s
+      timeout: 2s
+      retries: 30
+
+  gateway:
+    build: .
+    depends_on:
+      nats:
+        condition: service_healthy
+    restart: on-failure
+    ports:
+      - "127.0.0.1:9001:9001"
+    environment:
+      SNS_ACCESS_KEY: ${SNS_ACCESS_KEY:?Set SNS_ACCESS_KEY}
+      SNS_SECRET_KEY: ${SNS_SECRET_KEY:?Set SNS_SECRET_KEY}
+      SNS_PUBLIC_URL: ${SNS_PUBLIC_URL:-http://127.0.0.1:9001}
+      SNS_REGION: ${SNS_REGION:-us-east-1}
+      SNS_ACCOUNT_ID: ${SNS_ACCOUNT_ID:-000000000000}
+      NATS_URL: nats://nats:4222
+
+volumes:
+  nats-data:
