@@ -1,0 +1,66 @@
+version: '3'
+
+tasks:
+  default:
+    cmds: [task --list]
+  deps:
+    desc: Resolve and checksum Go dependencies
+    cmds: [go mod tidy]
+  run:
+    desc: Run the gateway with .env configuration
+    dotenv: ['.env']
+    cmds:
+      - go run ./cmd/gateway {{.CLI_ARGS}}
+  dev:
+    desc: Start local NATS and run the Go dev server with debug logging
+    dotenv: ['.env']
+    env:
+      SNS_ACCESS_KEY: '{{.SNS_ACCESS_KEY | default "gateway-local"}}'
+      SNS_SECRET_KEY: '{{.SNS_SECRET_KEY | default "gateway-local-dev-secret"}}'
+      NATS_URL: nats://127.0.0.1:4222
+    cmds:
+      - task: deps
+      - docker compose up -d --wait nats
+      - go run ./cmd/gateway --backend nats --debug {{.CLI_ARGS}}
+  dev-stop:
+    desc: Stop the local dev broker while keeping its data
+    dotenv: ['.env']
+    env:
+      SNS_ACCESS_KEY: '{{.SNS_ACCESS_KEY | default "gateway-local"}}'
+      SNS_SECRET_KEY: '{{.SNS_SECRET_KEY | default "gateway-local-dev-secret"}}'
+    cmds:
+      - docker compose stop nats
+  example-server:
+    desc: Run the Go subscriber and HTTP webhook example
+    dir: examples/go
+    dotenv: ['{{.ROOT_DIR}}/.env']
+    cmds:
+      - go run ./server {{.CLI_ARGS}}
+  example-client:
+    desc: Publish a message using the Go SNS client example
+    dir: examples/go
+    dotenv: ['{{.ROOT_DIR}}/.env']
+    cmds:
+      - go run ./client {{.CLI_ARGS}}
+  build:
+    desc: Build bin/gateway
+    cmds: [go build -trimpath -o bin/gateway ./cmd/gateway]
+  test:
+    desc: Run tests with the race detector (NATS test is opt-in)
+    cmds: [go test -race ./...]
+  test-core:
+    desc: Test API, delivery, memory backend and configuration
+    cmds: [go test -race ./gateway ./backend/memory ./internal/config]
+  test-nats:
+    desc: Test a running disposable JetStream server
+    env:
+      SNS_TEST_NATS_URL: '{{.SNS_TEST_NATS_URL | default "nats://127.0.0.1:4222"}}'
+    cmds: [go test -race ./backend/nats -run TestJetStream -count=1 -v]
+  test-sdk:
+    desc: Check serialization and response parsing with the SNS Go SDK
+    dir: tests/sdk
+    cmds:
+      - go mod tidy
+      - go test -race ./...
+  vet:
+    cmds: [go vet ./...]
